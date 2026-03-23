@@ -142,7 +142,7 @@ class MMFConv2dFunction(torch.autograd.Function):
 
         ### Step 2. On chip: dY <- dO × W^T
         # In conv2d, W^T means transposed convolution
-        dY_4d = torch.nn.grad.conv2d_input(X.shape, W, dO, stride=stride, padding=padding)  # [B, C_in, H_in, W_in]
+        dY_4d = torch.nn.grad.conv2d_input(X.shape, W, dO.float(), stride=stride, padding=padding)  # [B, C_in, H_in, W_in]
 
         # Reshape dY to [M, C_in] to match RMSNorm dimension: M = B * H_in * W_in
         dY = dY_4d.permute(0, 2, 3, 1).reshape(-1, C_in)  # [M, C_in]
@@ -168,7 +168,7 @@ class MMFConv2dFunction(torch.autograd.Function):
         ### Step 4: On chip: dW <- dO^T × Y_tilde
         # Reshape Y_tilde back to 4d for conv2d_weight
         Y_tilde_4d = Y_tilde.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
-        dW = torch.nn.grad.conv2d_weight(Y_tilde_4d, W.shape, dO, stride=stride, padding=padding)  # [C_out, C_in, kH, kW]
+        dW = torch.nn.grad.conv2d_weight(Y_tilde_4d, W.shape, dO.float(), stride=stride, padding=padding)  # [C_out, C_in, kH, kW]
 
         ### Step 5: On chip: db <- sum(dO)
         db = dO.sum(dim=(0, 2, 3))    # [C_out]

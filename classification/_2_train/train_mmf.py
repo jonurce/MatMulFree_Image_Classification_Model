@@ -41,18 +41,18 @@ def train_one_epoch(model, epoch, writer, loader, optimizer, scheduler, criterio
 
         optimizer.zero_grad()
 
-        """ Disabled autocast, which casts to float16, as custom kernels expect float32 """
+        """ Disabled AMP, which casts to float16, as custom kernels expect float32 """
         # with autocast(device_type='cuda'):
         logits = model(images)  # [B, 10]
         loss = criterion(logits.float(), labels)
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
         # Backward and step with gradient clipping (uses scaler for this) 
         # scaler.scale(loss).backward()
-        # scaler.unscale_(optimizer)  # important before clip
+        # scaler.unscale_(optimizer)
         # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
         # scaler.step(optimizer)
         # scaler.update()
@@ -431,7 +431,7 @@ if __name__ == "__main__":
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--lr", type=float, default=1e-3) # higher lr for mmf
+    parser.add_argument("--lr", type=float, default=4e-3) # higher lr for mmf
     parser.add_argument("--wd", type=float, default=0) # lower for mmf
     args = parser.parse_args()
     main(args)
