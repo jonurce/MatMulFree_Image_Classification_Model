@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, CosineAnnealingWarmRestarts, LambdaLR, OneCycleLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, CosineAnnealingWarmRestarts, LambdaLR, OneCycleLR, SequentialLR
 from tqdm import tqdm
 import os
 import argparse
@@ -47,6 +47,17 @@ def train_one_epoch(model, epoch, writer, loader, optimizer, scheduler, criterio
         loss = criterion(logits.float(), labels)
 
         loss.backward()
+
+        # Log first layer gradient mean to TensorBoard
+        first_layer_grad_norm = None
+        for name, p in model.named_parameters():
+            if 'weight' in name and p.grad is not None:
+                first_layer_grad_norm = p.grad.abs().mean().item()
+                break  # only first layer
+
+        if first_layer_grad_norm is not None:
+            writer.add_scalar("Gradients/first_layer_mean", first_layer_grad_norm, global_step)
+            
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
@@ -73,6 +84,7 @@ def train_one_epoch(model, epoch, writer, loader, optimizer, scheduler, criterio
         global_step = epoch * num_batches + batch_idx
         writer.add_scalar("Train/batch/loss", loss.item(), global_step)
         writer.add_scalar("Train/batch/accuracy", correct / total, global_step)
+
 
     avg_loss = total_loss / num_batches
     accuracy = total_correct / total_samples
@@ -248,9 +260,10 @@ def main(args):
             # model = torch.compile(model)
             optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
             # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=25, min_lr=args.lr/20)
-            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0.6 * args.lr)
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0)
             # scheduler = OneCycleLR(optimizer, max_lr=args.lr * 1.1, total_steps=len(train_loader) * args.epochs,
             #     pct_start=0.03, anneal_strategy='cos', div_factor=2, final_div_factor=1e5)
+
 
     else:
 
@@ -309,7 +322,7 @@ def main(args):
             optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
             
             # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=25, min_lr=args.lr/20)
-            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0.6 * args.lr)
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0)
             # scheduler = OneCycleLR(optimizer, max_lr=args.lr * 1.1, total_steps=len(train_loader) * args.epochs,
             #     pct_start=0.03, anneal_strategy='cos', div_factor=2, final_div_factor=1e5)
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -356,6 +369,10 @@ def main(args):
         # Scheduler step per epoch 
         # scheduler.step(val_loss) # ReduceLROnPlateau -> needs val_loss
         scheduler.step() # CosineAnnealingLR -> empty parenthesis
+
+        if epoch == args.epochs // 2:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] / 2
 
         # Early stopping
         if val_loss < best_val_loss * (1 - min_delta_pct):
@@ -430,7 +447,7 @@ if __name__ == "__main__":
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--lr", type=float, default=3e-3) # higher lr for mmf
     parser.add_argument("--wd", type=float, default=0) # lower for mmf
     args = parser.parse_args()
