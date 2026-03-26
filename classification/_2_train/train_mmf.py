@@ -264,14 +264,14 @@ def main(args):
             # scheduler = OneCycleLR(optimizer, max_lr=args.lr * 1.1, total_steps=len(train_loader) * args.epochs,
             #     pct_start=0.03, anneal_strategy='cos', div_factor=2, final_div_factor=1e5)
 
-            scheduler1 = CosineAnnealingLR(optimizer, T_max=args.epochs//3, eta_min=args.lr*0.5)
-            scheduler2 = CosineAnnealingLR(optimizer, T_max=5, eta_min=args.lr*0.25)
-            scheduler3 = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=args.lr*0)
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[scheduler1, scheduler2, scheduler3],
-                milestones=[args.epochs//3, args.epochs//3 + 5]
-            )
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs//3, eta_min=args.lr*0.5)
+            # scheduler2 = CosineAnnealingLR(optimizer, T_max=5, eta_min=args.lr*0.25)
+            # scheduler3 = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=args.lr*0)
+            # scheduler = SequentialLR(
+            #     optimizer,
+            #     schedulers=[scheduler1, scheduler2, scheduler3],
+            #     milestones=[args.epochs//3, args.epochs//3 + 5]
+            # )
 
 
     else:
@@ -334,17 +334,18 @@ def main(args):
             # scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.lr*0.1)
             # scheduler = OneCycleLR(optimizer, max_lr=args.lr * 1.1, total_steps=len(train_loader) * args.epochs,
             #     pct_start=0.03, anneal_strategy='cos', div_factor=2, final_div_factor=1e5)
+            
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs//3, eta_min=args.lr*0.5)
+            # scheduler2 = CosineAnnealingLR(optimizer, T_max=5, eta_min=args.lr*0.25)
+            # scheduler3 = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=args.lr*0)
+            # scheduler = SequentialLR(
+            #     optimizer,
+            #     schedulers=[scheduler1, scheduler2, scheduler3],
+            #    milestones=[args.epochs//3, args.epochs//3 + 5]
+            # )
+
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-
-            scheduler1 = CosineAnnealingLR(optimizer, T_max=args.epochs//3, eta_min=args.lr*0.5)
-            scheduler2 = CosineAnnealingLR(optimizer, T_max=5, eta_min=args.lr*0.25)
-            scheduler3 = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=args.lr*0)
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[scheduler1, scheduler2, scheduler3],
-                milestones=[args.epochs//3, args.epochs//3 + 5]
-            )
 
         start_epoch = checkpoint['epoch'] + 1
         best_val_loss = checkpoint['best_val_loss']
@@ -384,9 +385,18 @@ def main(args):
         GLOBAL_LAST_OPTIMIZER_STATE = optimizer.state_dict()
         GLOBAL_LAST_SCHEDULER_STATE = scheduler.state_dict()
 
+        
+        if epoch == args.epochs//3:
+            # Manually set lr to where scheduler1 left off / 2
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = args.lr * 0.25
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=0)
+        else:
+            scheduler.step()
+        
         # Scheduler step per epoch 
         # scheduler.step(val_loss) # ReduceLROnPlateau -> needs val_loss
-        scheduler.step() # CosineAnnealingLR -> empty parenthesis
+        # scheduler.step() # CosineAnnealingLR -> empty parenthesis
 
         # if epoch == args.epochs // 3 + 3:
         #    for param_group in optimizer.param_groups:
@@ -460,12 +470,12 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmf", help="Save directory")
 
     # Resume directory: resume_path or None
-    resume_path = "classification/_2_train/runs_mmf/XX/interrupted_epoch_XX.pth"
+    resume_path = "classification/_2_train/runs_mmf/23/checkpoint_epoch_460.pth"
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--epochs", type=int, default=1500)
+    parser.add_argument("--epochs", type=int, default=1200)
     parser.add_argument("--lr", type=float, default=3e-3) # higher lr for mmf
     parser.add_argument("--wd", type=float, default=0) # lower for mmf
     args = parser.parse_args()
