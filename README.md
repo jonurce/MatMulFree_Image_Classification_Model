@@ -1,4 +1,4 @@
-# Low Power Event-RGB Based Spacecraft Pose Estimation 
+# Matrix Multiplication Free Object Detection Model 
 
 Work in progress (February 2026)
 

@@ -201,7 +201,7 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
 
     # Early stopping for training
-    patience = 300
+    patience = 500
     best_val_loss = float('inf')
     epochs_no_improve = 0
     start_epoch = 0
@@ -259,7 +259,7 @@ def main(args):
             # model = torch.compile(model)
             optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
             # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=25, min_lr=args.lr/20)
-            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=args.lr*0.001)
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.lr*0.001)
             # scheduler = OneCycleLR(optimizer, max_lr=args.lr * 1.1, total_steps=len(train_loader) * args.epochs,
             #     pct_start=0.03, anneal_strategy='cos', div_factor=2, final_div_factor=1e5)
 
@@ -330,7 +330,7 @@ def main(args):
             optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
             
             # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=25, min_lr=args.lr/20)
-            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=args.lr*0.001)
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.lr*0.001)
             # scheduler = OneCycleLR(optimizer, max_lr=args.lr * 1.1, total_steps=len(train_loader) * args.epochs,
             #     pct_start=0.03, anneal_strategy='cos', div_factor=2, final_div_factor=1e5)
             
@@ -385,17 +385,17 @@ def main(args):
         GLOBAL_LAST_SCHEDULER_STATE = scheduler.state_dict()
 
         
-        if epoch == args.epochs//3:
+        if epoch == args.epochs//2:
             # Manually set lr to half
             for param_group in optimizer.param_groups:
                 # param_group['lr'] = args.lr * 0.25
                 param_group['lr'] = param_group['lr'] / 2
             # scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs*2//3, eta_min=0)
-        elif epoch == args.epochs*2//3:
+        # elif epoch == args.epochs*2//3:
             # Manually set lr to where scheduler left off
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = args.lr * 0.001
-            scheduler = ConstantLR(optimizer, factor=1, total_iters=args.epochs//3)
+            # for param_group in optimizer.param_groups:
+            #     param_group['lr'] = args.lr * 0.001
+            # scheduler = ConstantLR(optimizer, factor=1, total_iters=args.epochs//3)
         else:
             scheduler.step()
         
