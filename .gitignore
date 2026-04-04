@@ -3,3 +3,4 @@ _dataset/
 venv/
 __pycache__/
 *.pth
+*.0
