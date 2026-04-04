@@ -17,7 +17,7 @@ from torch.amp import GradScaler, autocast
 scaler = GradScaler()
 
 from classification._1_dataset.dataset import CIFAR10Dataset
-from model import YOLOv1ClassifierMMFv1  
+from model import YOLOv1ClassifierMMF, YOLOv1ClassifierMMFv1, YOLOv1ClassifierMMFv2, YOLOv1ClassifierMMFv3
 
 GLOBAL_LAST_EPOCH = 0
 GLOBAL_BEST_VAL_LOSS = float('inf')
@@ -161,7 +161,7 @@ def save_on_interrupt():
 ###################### Register handler #####################
 signal.signal(signal.SIGINT, save_on_interrupt)
 
-###################### Print Network Zeros #####################
+###################### Get Network Weights #####################
 def network_weights(model):
     total_zeros   = 0
     total_pos = 0
@@ -169,6 +169,7 @@ def network_weights(model):
     total_weights = 0
     total_mean = 0.0
     total_s_w = 0.0
+    total_std = 0.0
     num_layers = 0
     for name, p in model.named_parameters():
         if 'weight' in name:
@@ -179,16 +180,19 @@ def network_weights(model):
             total_pos   += (w_ternary > 0).sum().item()
             total_neg   += (w_ternary < 0).sum().item()
             total_weights += w_ternary.numel()
+
             total_mean += p.abs().mean().item()
             total_s_w += s_w.item()
+            total_std += p.abs().std().item()
             num_layers += 1
-
+    
     avg_zeros = total_zeros / total_weights
     avg_pos = total_pos / total_weights
     avg_neg = total_neg / total_weights
     avg_mean = total_mean / num_layers
     avg_s_w = total_s_w / num_layers
-    return avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_w
+    avg_std = total_std / num_layers
+    return avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_w, avg_std
 
 ##################### Main #####################
 def main(args):
@@ -196,7 +200,15 @@ def main(args):
     print(f"Using device: {device}")
 
     # Model
-    model = YOLOv1ClassifierMMFv1(num_classes=10).to(device)
+    if (args.mmf_version == 0):
+        model = YOLOv1ClassifierMMF(num_classes=10).to(device)
+    elif (args.mmf_version == 1):
+        model = YOLOv1ClassifierMMFv1(num_classes=10).to(device)
+    elif (args.mmf_version == 2):
+        model = YOLOv1ClassifierMMFv2(num_classes=10, channel_factor=args.channel_factor).to(device)
+    elif (args.mmf_version == 3):
+        model = YOLOv1ClassifierMMFv3(num_classes=10).to(device)
+
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -356,16 +368,18 @@ def main(args):
     # Training loop
     for epoch in range(start_epoch, args.epochs):
 
-        avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_z = network_weights(model)
+        avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_z, avg_std = network_weights(model)
         writer.add_scalar("Weights/zero", avg_zeros, epoch)
         writer.add_scalar("Weights/pos", avg_pos, epoch)
         writer.add_scalar("Weights/neg", avg_neg, epoch)
-        writer.add_scalar("Weights/mean", avg_mean, epoch)
-        writer.add_scalar("Weights/s_z", avg_s_z, epoch)
+        writer.add_scalar("Weights/avg_mean", avg_mean, epoch)
+        writer.add_scalar("Weights/avg_s_z", avg_s_z, epoch)
+        writer.add_scalar("Weights/avg_std", avg_std, epoch)
 
         train_loss, train_acc = train_one_epoch(model, epoch, writer, train_loader, optimizer, scheduler, criterion, device)
        
         val_loss, val_acc = validate(model, epoch, writer, val_loader, criterion, device)
+
 
         print(f"Epoch {epoch+1}/{args.epochs} | "
               f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
@@ -473,18 +487,22 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train YOLOv1-style Classifier on CIFAR-10")
 
+    # Model parameters
+    parser.add_argument("--mmf_version",     type=int,   default=3, help="MMF version to use")
+    parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
+
     # Save directory
     parser.add_argument("--start_count",   type=int,   default=0,       help="Starting count for model directory naming")
-    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv1", help="Save directory")
+    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv3", help="Save directory")
 
     # Resume directory: resume_path or None
-    resume_path = "classification/_2_train/runs_mmf/34/checkpoint_epoch_158.pth"
+    resume_path = "classification/_2_train/runs_mmfv3/1/checkpoint_epoch_618.pth"
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=1200)
-    parser.add_argument("--lr", type=float, default=3e-3) # higher lr for mmf
-    parser.add_argument("--wd", type=float, default=0) # lower for mmf
+    parser.add_argument("--lr", type=float, default=3e-3) # higher lr for mmf 3e-3
+    parser.add_argument("--wd", type=float, default=0) # lower for mmf 0
     args = parser.parse_args()
     main(args)

@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from torch.utils.cpp_extension import load
 
 
+################################ MMF & MMFv2 ################################
+
 ################ MMF Linear Function ################
 class MMFLinearFunction(torch.autograd.Function):
     # Theory: X ∈ R^{M×N}, W ∈ R^{N×K}, b ∈ R^K
@@ -71,54 +73,16 @@ class MMFLinearFunction(torch.autograd.Function):
 class MMFLinear(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
+        
+        in_features = int(in_features)
+        out_features = int(out_features)
+
         # X [M,N] * W.t() [N,K] = O [M,K]
         self.weight = nn.Parameter(torch.randn(out_features, in_features)) # [K, N]
         self.bias = nn.Parameter(torch.zeros(out_features)) # [K]
 
     def forward(self, x):
         return MMFLinearFunction.apply(x, self.weight, self.bias)
-
-
-
-
-
-################ MMF Linear Layer Without Backward Quantization ################
-class MMFLinearv1(nn.Module):
-    def __init__(self, in_features, out_features):
-        super().__init__()
-        # X [M,N] * W.t() [N,K] = O [M,K]
-        self.weight = nn.Parameter(torch.randn(out_features, in_features)) # [K, N]
-        self.bias = nn.Parameter(torch.zeros(out_features)) # [K]
-
-    def forward(self, x):
-         # Step 2. On chip: Y_tilde, mu, var, r <- rms_norm_fwd(X)
-        mu   = x.mean(dim=-1, keepdim=True)             # [M, 1]
-        var  = x.var(dim=-1, keepdim=True, unbiased=False) # [M, 1]
-        r    = 1.0 / (var + 1e-8).sqrt()                 # [M, 1]
-
-        y_norm = r * (x - mu)                           # [M, N]
-
-        # Inside Step 2: activation_quant
-        s_act  = 127.0 / y_norm.abs().max(dim=-1, keepdim=True).values.clamp(min=1e-8)  # [M, 1]
-        y_tilde = (s_act * y_norm).round().clamp(-128, 127) / s_act     # [M, N]
-
-        # Step 3: On chip: W_tilde <- weight_quant(W)
-        W = self.weight
-        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
-        
-        # w_tilde [K, N] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
-        # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
-        w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
-
-        # Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
-        O = y_tilde @ w_tilde.t() + self.bias    # [M, K] <- [M, N] @ [N, K] + [K]
-
-        return O # [M, K]
-
-
-
-
-
 
 ################ MMF Conv2d Function ################
 class MMFConv2dFunction(torch.autograd.Function):
@@ -217,6 +181,9 @@ class MMFConv2dFunction(torch.autograd.Function):
 class MMFConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
         super().__init__()
+
+        in_channels = int(in_channels)
+        out_channels = int(out_channels)
         
         # X [B, C_in, H_in, W_in] conv W [C_out, C_in, kH, kW] = O [B, C_out, H_out, W_out]
 
@@ -232,6 +199,10 @@ class MMFConv2d(nn.Module):
 
     def forward(self, x):
         return MMFConv2dFunction.apply(x, self.weight, self.bias, self.stride, self.padding)
+
+
+
+
 
 ################ MMF Conv2d Residual Layer ################
 class MMFConv2dRes(nn.Module):
@@ -275,8 +246,38 @@ class MMFConv2dRes(nn.Module):
 
 
 
+################################ MMFv1 ################################
+################ MMF Linear Layer Without Backward Quantization ################
+class MMFLinearv1(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        # X [M,N] * W.t() [N,K] = O [M,K]
+        self.weight = nn.Parameter(torch.randn(out_features, in_features)) # [K, N]
+        self.bias = nn.Parameter(torch.zeros(out_features)) # [K]
 
+    def forward(self, x):
+        # Step 2. On chip: Y_tilde, mu, var, r <- rms_norm_fwd(X)
+        mu   = x.mean(dim=-1, keepdim=True)             # [M, 1]
+        var  = x.var(dim=-1, keepdim=True, unbiased=False) # [M, 1]
+        r    = 1.0 / (var + 1e-8).sqrt()                 # [M, 1]
 
+        y_norm = r * (x - mu)                           # [M, N]
+
+        # Inside Step 2: activation_quant
+        s_act  = 127.0 / y_norm.abs().max(dim=-1, keepdim=True).values.clamp(min=1e-8)  # [M, 1]
+        y_tilde = (s_act * y_norm).round().clamp(-128, 127) / s_act     # [M, N]
+
+        # Step 3: On chip: W_tilde <- weight_quant(W)
+        W = self.weight # [K, N]
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        
+        # w_tilde [K, N] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
+        # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
+        # w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        w_tilde = W + ((s_w * W).round().clamp(-1, 1) / s_w - W).detach()
+
+        # Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
+        return y_tilde @ w_tilde.t() + self.bias    # [M, K] <- [M, N] @ [N, K] + [K]
 
 ################ MMF Conv2d Layer Without Backward Quantization ################
 class MMFConv2dv1(nn.Module):
@@ -316,6 +317,7 @@ class MMFConv2dv1(nn.Module):
 
         # Reshape y_tilde back to [B, C_in, H_in, W_in] for conv2d
         y_tilde_4d = y_tilde.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
+        # y_norm_4d = y_norm.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
 
 
         ### Step 3: On chip: W_tilde <- weight_quant(W)
@@ -324,13 +326,221 @@ class MMFConv2dv1(nn.Module):
         
         # w_tilde [C_out, C_in, kH, kW] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
+        # w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        w_tilde = W + ((s_w * W).round().clamp(-1, 1) / s_w - W).detach()
+
+        ### Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
+        return F.conv2d(y_tilde_4d, w_tilde, self.bias, self.stride, self.padding)  # [B, C_out, H_out, W_out]
+
+
+
+
+
+
+
+
+################################ MMFv3 ################################
+
+################ MMF Linear Function with Activation Quantization to F8 ################
+class MMFLinearFunctionv3(torch.autograd.Function):
+    # Theory: X ∈ R^{M×N}, W ∈ R^{N×K}, b ∈ R^K
+    # Code: X [M,N], W [K, N], b [K] 
+    # Step 1. Load from HBM: X, W, b (HBM slow)
+    @staticmethod
+    def forward(ctx, X, W, b):
+        # Step 2. On chip: Y_tilde, mu, var, r <- rms_norm_fwd(X)
+        mu   = X.mean(dim=-1, keepdim=True)             # [M, 1]
+        var  = X.var(dim=-1, keepdim=True, unbiased=False) # [M, 1]
+        r    = 1.0 / (var + 1e-8).sqrt()                 # [M, 1]
+
+        y_norm = r * (X - mu)                           # [M, N]
+
+        # Inside Step 2: activation_quant to F8
+        # E4M3 (High Precision): max value: 448 /vs/ E5M2 (High Range): max value: 57,344
+        s_act  = 448.0 / y_norm.abs().max(dim=-1, keepdim=True).values.clamp(min=1e-8)  # [M, 1]
+        y_tilde = (s_act * y_norm).to(torch.float8_e4m3fn).to(torch.float32) / s_act     # [M, N]
+
+
+        # Step 3: On chip: W_tilde <- weight_quant(W)
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        
+        # w_tilde [K, N] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
+        # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
+        w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+
+        # Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
+        O = y_tilde @ w_tilde.t() + b    # [M, K] <- [M, N] @ [N, K] + [K]
+
+        # Step 5: Store to HBM: O (return) + mu, var, r + X, W, b
+        ctx.save_for_backward(X, W, b, mu, var, r)
+
+        return O # [M, K]
+
+    # Step 1. Load from HBM: X, W, b, O (not used), mu, var, r, dO (HBM slow)
+    @staticmethod
+    def backward(ctx, dO):
+        X, W, b, mu, var, r = ctx.saved_tensors
+
+        # Step 2. On chip: dY <- dO × W^T
+        dY = dO @ W # [M, N] <- [M, K] @ [K, N] 
+
+        # Step 3. On chip: dX, Y_tilde <- rms_norm_bwd(dY, X, mu, var, r) + activation_quant to F8
+        y_norm  = r * (X - mu)
+
+        # Inside Step 3: activation_quant to F8
+        # E4M3 (High Precision): max value: 448 /vs/ E5M2 (High Range): max value: 57,344
+        s_act  = 448.0 / y_norm.abs().max(dim=-1, keepdim=True).values.clamp(min=1e-8)
+        Y_tilde = (s_act * y_norm).to(torch.float8_e4m3fn).to(torch.float32) / s_act # [M, N]
+
+        dsigma2 = (dY * (X - mu) * -0.5 * r**3).sum(dim=-1, keepdim=True)  # [M, 1]
+
+        dmu = (-r * dY).sum(dim=-1, keepdim=True) + dsigma2 * (X - mu).mean(dim=-1, keepdim=True)  # [M, 1]
+        
+        N  = X.shape[-1]
+        dX = r * dY + 2 * dsigma2 * (X - mu) / N + dmu / N
+
+        # Step 4: On chip: dW <- dO^T × Y_tilde
+        dW = dO.t() @ Y_tilde   # [K, N] = [K, M] @ [M, N] 
+
+        # Step 5: On chip: db <- sum(dO)
+        db = dO.sum(dim=0)    # [K]
+
+        # Step 6: Store dX, dW, db to HBM
+        # Same args as forward(ctx, X, W, b)
+        return dX, dW, db
+
+################ MMF Linear Layer ################
+class MMFLinearv3(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        
+        in_features = int(in_features)
+        out_features = int(out_features)
+
+        # X [M,N] * W.t() [N,K] = O [M,K]
+        self.weight = nn.Parameter(torch.randn(out_features, in_features)) # [K, N]
+        self.bias = nn.Parameter(torch.zeros(out_features)) # [K]
+
+    def forward(self, x):
+        return MMFLinearFunctionv3.apply(x, self.weight, self.bias)
+
+################ MMF Conv2d Function with Activation Quantization to F8 ################
+class MMFConv2dFunctionv3(torch.autograd.Function):
+    # Theory: X ∈ R^{B×C_in×H_in×W_in}, W ∈ R^{C_out×C_in×kH×kW}, b ∈ R^{C_out}
+    # Code: X [B, C_in, H_in, W_in], W [C_out, C_in, kH, kW], b [C_out]
+    ### Step 1. Load from HBM: X, W, b (HBM slow)
+    @staticmethod
+    def forward(ctx, X, W, b, stride, padding):
+
+        # Before nothing, get shapes
+        B, C_in, H_in, W_in = X.shape
+
+        # Normalize over C_in per spatial position — reshape to [B*H_in*W_in, C_in]
+        # so that dim=-1 normalization operates over C_in exactly as in Linear
+        X_flat = X.permute(0, 2, 3, 1).reshape(-1, C_in)  # [M, C_in] where M=B*H_in*W_in
+
+        ### Step 2. On chip: Y_tilde, mu, var, r <- rms_norm_fwd(X)
+        mu   = X_flat.mean(dim=-1, keepdim=True)             # [M, 1]
+        var  = X_flat.var(dim=-1, keepdim=True, unbiased=False) # [M, 1]
+        r    = 1.0 / (var + 1e-8).sqrt()                 # [M, 1]
+
+        y_norm = r * (X_flat - mu)                           # [M, C_in]
+
+        # Inside Step 3: activation_quant to F8
+        s_act  = 448.0 / y_norm.abs().max(dim=-1, keepdim=True).values.clamp(min=1e-8)  # [M, 1]
+        y_tilde = (s_act * y_norm).to(torch.float8_e4m3fn).to(torch.float32) / s_act     # [M, C_in]
+
+        # Reshape y_tilde back to [B, C_in, H_in, W_in] for conv2d
+        y_tilde_4d = y_tilde.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
+
+
+        ### Step 3: On chip: W_tilde <- weight_quant(W)
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        
+        # w_tilde [C_out, C_in, kH, kW] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
+        # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
         w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
 
         ### Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
-        O = F.conv2d(y_tilde_4d, w_tilde, self.bias, self.stride, self.padding)  # [B, C_out, H_out, W_out]
+        O = F.conv2d(y_tilde_4d, w_tilde, b, stride, padding)  # [B, C_out, H_out, W_out]
+
+
+        ### Step 5: Store to HBM: O (return) + mu, var, r + X, W, b
+        ctx.save_for_backward(X, W, b, mu, var, r)
+        ctx.stride = stride
+        ctx.padding = padding
 
         return O # [B, C_out, H_out, W_out]
 
+    ### Step 1. Load from HBM: X, W, b, O (not used), mu, var, r, dO (HBM slow)
+    @staticmethod
+    def backward(ctx, dO):
+        X, W, b, mu, var, r = ctx.saved_tensors
+        stride, padding = ctx.stride, ctx.padding
+
+        B, C_in, H_in, W_in = X.shape
+
+        ### Step 2. On chip: dY <- dO × W^T
+        # In conv2d, W^T means transposed convolution
+        dY_4d = torch.nn.grad.conv2d_input(X.shape, W, dO.float(), stride=stride, padding=padding)  # [B, C_in, H_in, W_in]
+
+        # Reshape dY to [M, C_in] to match RMSNorm dimension: M = B * H_in * W_in
+        dY = dY_4d.permute(0, 2, 3, 1).reshape(-1, C_in)  # [M, C_in]
+
+        ### Step 3. On chip: dX, Y_tilde <- rms_norm_bwd(dY, X, mu, var, r)
+        X_flat = X.permute(0, 2, 3, 1).reshape(-1, C_in)              # [M, C_in]
+
+        y_norm  = r * (X_flat - mu)
+        
+        # E4M3 (High Precision): max value: 448 /vs/ E5M2 (High Range): max value: 57,344
+        s_act  = 448.0 / y_norm.abs().max(dim=-1, keepdim=True).values.clamp(min=1e-8)
+        Y_tilde = (s_act * y_norm).to(torch.float8_e4m3fn).to(torch.float32) / s_act # [M, C_in]
+
+        dsigma2 = (dY * (X_flat - mu) * -0.5 * r**3).sum(dim=-1, keepdim=True)  # [M, 1]
+
+        dmu = (-r * dY).sum(dim=-1, keepdim=True) + dsigma2 * (X_flat - mu).mean(dim=-1, keepdim=True)  # [M, 1]
+        
+        # normalization dimension is C_in
+        dX_flat = r * dY + 2 * dsigma2 * (X_flat - mu) / C_in + dmu / C_in # [M, C_in]
+
+        # Reshape dX back to [B, C_in, H_in, W_in]
+        dX = dX_flat.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
+
+
+        ### Step 4: On chip: dW <- dO^T × Y_tilde
+        # Reshape Y_tilde back to 4d for conv2d_weight
+        Y_tilde_4d = Y_tilde.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
+        dW = torch.nn.grad.conv2d_weight(Y_tilde_4d, W.shape, dO.float(), stride=stride, padding=padding)  # [C_out, C_in, kH, kW]
+
+        ### Step 5: On chip: db <- sum(dO)
+        db = dO.sum(dim=(0, 2, 3))    # [C_out]
+
+        ### Step 6: Store dX, dW, db to HBM
+        # Same args as forward(ctx, X, W, b, stride, padding)
+        return dX, dW, db, None, None   # None for stride, padding
+
+################ MMF Conv2d Layer ################
+class MMFConv2dv3(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+        super().__init__()
+
+        in_channels = int(in_channels)
+        out_channels = int(out_channels)
+        
+        # X [B, C_in, H_in, W_in] conv W [C_out, C_in, kH, kW] = O [B, C_out, H_out, W_out]
+
+        # Weights: [C_out, C_in, kH, kW]
+        self.weight  = nn.Parameter(torch.randn(out_channels, in_channels, kernel_size, kernel_size)) 
+
+        # Bias [C_out]
+        self.bias    = nn.Parameter(torch.zeros(out_channels))
+
+        # Stride and padding (scalars)
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, x):
+        return MMFConv2dFunctionv3.apply(x, self.weight, self.bias, self.stride, self.padding)
 
 
 

@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from classification._2_train.layers_mmf_3 import MMFLinear, MMFConv2d, MMFConv2dRes, MMFLinearv1, MMFConv2dv1
+from classification._2_train.layers_mmf_3 import MMFLinearv3, MMFConv2dv3
 
 ###################### YOLOv1 Classification ######################
 class YOLOv1Classifier(nn.Module):
@@ -267,6 +268,194 @@ class YOLOv1ClassifierMMFv1(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),          # average-pooling layer to 1×1
             nn.Flatten(),                           # flatten [B, 1024, 1, 1] → [B, 1024]
             MMFLinearv1(1024, num_classes),            # single fully connected layer
+        )
+
+    def forward(self, x):
+        # x: [B, 3, 32, 32]
+        features = self.backbone_classification(x)        # → [B, 1024, 1, 1]
+        logits = self.head_classification(features)       # → [B, 10]
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)
+        return logits
+    
+    def get_probs(self, x, temperature=1.0):
+        logits = self(x)
+        scaled_logits = logits / temperature
+        probs = torch.softmax(scaled_logits, dim=1)
+        return probs
+
+###################### YOLOv1 Classification MMFv2 ######################
+class YOLOv1ClassifierMMFv2(nn.Module):
+    """
+    YOLOv1 architecture adapted for CIFAR-10 classification.
+    Follows the exact conv layers from the original YOLOv1 paper
+    (Redmon et al., 2016, arXiv:1506.02640), but replaces grid regression
+    with a simple classification head (10 classes).
+
+    Same as YOLOv1ClassifierMMF, but with wider channels (double) in Conv2d layers
+    
+    Input:  [B, 3, 32, 32]  (CIFAR-10 RGB images)
+    Output: [B, 10]         (class logits)
+    """
+    def __init__(self, num_classes=10, channel_factor=2):
+        super().__init__()
+        
+         # Backbone classification: 20 convolutional layers + maxpools (exact from YOLOv1 paper)
+        self.backbone_classification = nn.Sequential(
+
+            # Conv1: 7x7x64-s-2 + MaxPool: 2x2-s-2
+            MMFConv2d(3, 64 * channel_factor, kernel_size=7, stride=2, padding=3), #1
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv2: 3x3x192 + MaxPool: 2x2-s-2
+            MMFConv2d(64 * channel_factor, 192 * channel_factor, kernel_size=3, padding=1), #2
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv3–6: 1x1x128 + 3x3x256 + 1x1x256 + 3x3x512 + MaxPool: 2x2-s-2
+            MMFConv2d(192 * channel_factor, 128 * channel_factor, kernel_size=1), #3
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(128 * channel_factor, 256 * channel_factor, kernel_size=3, padding=1), #4
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(256 * channel_factor, 256 * channel_factor, kernel_size=1), #5
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(256 * channel_factor, 512 * channel_factor, kernel_size=3, padding=1), #6
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv7–16: (1x1x256 + 3x3x512)x4 + 1x1x512 + 3x3x1024 + Maxpool:2x2-s-2
+            MMFConv2d(512 * channel_factor, 256 * channel_factor, kernel_size=1), #7
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(256 * channel_factor, 512 * channel_factor, kernel_size=3, padding=1), #8
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 256 * channel_factor, kernel_size=1), #9
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(256 * channel_factor, 512 * channel_factor, kernel_size=3, padding=1), #10
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 256 * channel_factor, kernel_size=1), #11
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(256 * channel_factor, 512 * channel_factor, kernel_size=3, padding=1), #12
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 256 * channel_factor, kernel_size=1), #13
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(256 * channel_factor, 512 * channel_factor, kernel_size=3, padding=1), #14
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 512 * channel_factor, kernel_size=1), #15
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 1024 * channel_factor, kernel_size=3, padding=1), #16
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv17–20: (1x1x512 + 3x3x1024)x2
+            MMFConv2d(1024 * channel_factor, 512 * channel_factor, kernel_size=1), #17
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 1024 * channel_factor, kernel_size=3, padding=1), #18
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(1024 * channel_factor, 512 * channel_factor, kernel_size=1), #19
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2d(512 * channel_factor, 1024 * channel_factor, kernel_size=3, padding=1), #20
+            nn.LeakyReLU(0.1, inplace=True),
+        )
+        
+        # Classification head: exactly as described in YOLOv1 paper (first 20 convs + avg pool + FC)
+        self.head_classification = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),          # average-pooling layer to 1×1
+            nn.Flatten(),                           # flatten [B, 1024, 1, 1] → [B, 1024]
+            MMFLinear(1024 * channel_factor, num_classes), # single fully connected layer
+        )
+
+    def forward(self, x):
+        # x: [B, 3, 32, 32]
+        features = self.backbone_classification(x)        # → [B, 1024, 1, 1]
+        logits = self.head_classification(features)       # → [B, 10]
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)
+        return logits
+    
+    def get_probs(self, x, temperature=1.0):
+        logits = self(x)
+        scaled_logits = logits / temperature
+        probs = torch.softmax(scaled_logits, dim=1)
+        return probs
+
+###################### YOLOv1 Classification MMFv3 ######################
+class YOLOv1ClassifierMMFv3(nn.Module):
+    """
+    YOLOv1 architecture adapted for CIFAR-10 classification.
+    Follows the exact conv layers from the original YOLOv1 paper
+    (Redmon et al., 2016, arXiv:1506.02640), but replaces grid regression
+    with a simple classification head (10 classes).
+
+    Modified from YOLOv1ClassifierMMF: replaced act_quant to int8 with f8
+    
+    Input:  [B, 3, 32, 32]  (CIFAR-10 RGB images)
+    Output: [B, 10]         (class logits)
+    """
+    def __init__(self, num_classes=10):
+        super().__init__()
+        
+        # Backbone classification: 20 convolutional layers + maxpools (exact from YOLOv1 paper)
+        self.backbone_classification = nn.Sequential(
+
+            # Conv1: 7x7x64-s-2 + MaxPool: 2x2-s-2
+            MMFConv2dv3(3, 64, kernel_size=7, stride=2, padding=3), #1
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv2: 3x3x192 + MaxPool: 2x2-s-2
+            MMFConv2dv3(64, 192, kernel_size=3, padding=1), #2
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv3–6: 1x1x128 + 3x3x256 + 1x1x256 + 3x3x512 + MaxPool: 2x2-s-2
+            MMFConv2dv3(192, 128, kernel_size=1), #3
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(128, 256, kernel_size=3, padding=1), #4
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(256, 256, kernel_size=1), #5
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(256, 512, kernel_size=3, padding=1), #6
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv7–16: (1x1x256 + 3x3x512)x4 + 1x1x512 + 3x3x1024 + Maxpool:2x2-s-2
+            MMFConv2dv3(512, 256, kernel_size=1), #7
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(256, 512, kernel_size=3, padding=1), #8
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 256, kernel_size=1), #9
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(256, 512, kernel_size=3, padding=1), #10
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 256, kernel_size=1), #11
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(256, 512, kernel_size=3, padding=1), #12
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 256, kernel_size=1), #13
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(256, 512, kernel_size=3, padding=1), #14
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 512, kernel_size=1), #15
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 1024, kernel_size=3, padding=1), #16
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv17–20: (1x1x512 + 3x3x1024)x2
+            MMFConv2dv3(1024, 512, kernel_size=1), #17
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 1024, kernel_size=3, padding=1), #18
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(1024, 512, kernel_size=1), #19
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv3(512, 1024, kernel_size=3, padding=1), #20
+            nn.LeakyReLU(0.1, inplace=True),
+        )
+        
+        # Classification head: exactly as described in YOLOv1 paper (first 20 convs + avg pool + FC)
+        self.head_classification = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),          # average-pooling layer to 1×1
+            nn.Flatten(),                           # flatten [B, 1024, 1, 1] → [B, 1024]
+            MMFLinearv3(1024, num_classes),            # single fully connected layer
         )
 
     def forward(self, x):
