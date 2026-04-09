@@ -17,7 +17,7 @@ from torch.amp import GradScaler, autocast
 scaler = GradScaler()
 
 from classification._1_dataset.dataset import CIFAR10Dataset
-from model import YOLOv1ClassifierMMF, YOLOv1ClassifierMMFv1, YOLOv1ClassifierMMFv2, YOLOv1ClassifierMMFv3, YOLOv1ClassifierMMFv4, YOLOv1ClassifierMMFv5
+from model import YOLOv1ClassifierMMF, YOLOv1ClassifierMMFv1, YOLOv1ClassifierMMFv2, YOLOv1ClassifierMMFv3, YOLOv1ClassifierMMFv4, YOLOv1ClassifierMMFv5, YOLOv1ClassifierMMFv6
 
 GLOBAL_LAST_EPOCH = 0
 GLOBAL_BEST_VAL_LOSS = float('inf')
@@ -52,10 +52,14 @@ def train_one_epoch(model, epoch, writer, loader, optimizer, scheduler, criterio
         global_step = epoch * num_batches + batch_idx
         layer_idx = 0
         for name, p in model.named_parameters():
+            if 'scale_w' in name and p.grad is not None:
+                grad_mean = p.grad.abs().mean().item()
+                grad_max = p.grad.abs().max().item()
+                writer.add_scalar("Gradients/scale_w/mean_abs", grad_mean, global_step)
+                writer.add_scalar("Gradients/scale_w/max_abs",  grad_max,  global_step)
             if 'weight' in name and p.grad is not None:
                 grad_mean = p.grad.abs().mean().item()
                 grad_max = p.grad.abs().max().item()
-
                 writer.add_scalar(f"Gradients/mean_abs/layer_{layer_idx:02d}", grad_mean, global_step)
                 writer.add_scalar(f"Gradients/max_abs/layer_{layer_idx:02d}", grad_max, global_step)
 
@@ -212,6 +216,8 @@ def main(args):
         model = YOLOv1ClassifierMMFv4(num_classes=10).to(device)
     elif (args.mmf_version == 5):
         model = YOLOv1ClassifierMMFv5(num_classes=10, weight_init_scale=args.weight_init_scale).to(device)
+    elif (args.mmf_version == 6):
+        model = YOLOv1ClassifierMMFv6(num_classes=10, weight_init_scale=args.weight_init_scale).to(device)
     else:
         raise ValueError(f"Invalid MMF version: {args.mmf_version}")
 
@@ -494,16 +500,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train YOLOv1-style Classifier on CIFAR-10")
 
     # Model parameters
-    parser.add_argument("--mmf_version",     type=int,   default=5, help="MMF version to use")
+    parser.add_argument("--mmf_version",     type=int,   default=6, help="MMF version to use")
     parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
-    parser.add_argument("--weight_init_scale", type=float,   default=0.1, help="Weight initialization scale for MMF layers (only for v5)")
+    parser.add_argument("--weight_init_scale", type=float,   default=0.2, help="Weight initialization scale for MMF layers (only for v5 and v6)")
 
     # Save directory
     parser.add_argument("--start_count",   type=int,   default=0,       help="Starting count for model directory naming")
-    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv5", help="Save directory")
+    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv6", help="Save directory")
 
     # Resume directory: resume_path or None
-    resume_path = "classification/_2_train/runs_mmfv5/5/checkpoint_epoch_362.pth"
+    resume_path = "classification/_2_train/runs_mmfv6/0/checkpoint_epoch_230.pth"
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
 
     # Training parameters

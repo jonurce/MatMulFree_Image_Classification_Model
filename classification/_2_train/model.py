@@ -2,8 +2,8 @@
 import torch
 import torch.nn as nn
 
-from classification._2_train.layers_mmf_3 import MMFConv2dv5, MMFLinear, MMFConv2d, MMFConv2dRes, MMFLinearv1, MMFConv2dv1, MMFLinearv5 
-from classification._2_train.layers_mmf_3 import MMFLinearv3, MMFConv2dv3, MMFLinearv4, MMFConv2dv4
+from classification._2_train.layers_mmf_3 import MMFConv2dv5, MMFConv2dv6, MMFLinear, MMFConv2d, MMFConv2dRes, MMFLinearv1, MMFConv2dv1, MMFLinearv5 
+from classification._2_train.layers_mmf_3 import MMFLinearv3, MMFConv2dv3, MMFLinearv4, MMFConv2dv4, MMFLinearv6, MMFConv2dv6
 
 ###################### YOLOv1 Classification ######################
 class YOLOv1Classifier(nn.Module):
@@ -578,7 +578,7 @@ class YOLOv1ClassifierMMFv5(nn.Module):
     Input:  [B, 3, 32, 32]  (CIFAR-10 RGB images)
     Output: [B, 10]         (class logits)
     """
-    def __init__(self, num_classes=10, weight_init_scale=2.0):
+    def __init__(self, num_classes=10, weight_init_scale=1.0):
         super().__init__()
         
         # Backbone classification: 20 convolutional layers + maxpools (exact from YOLOv1 paper)
@@ -659,6 +659,99 @@ class YOLOv1ClassifierMMFv5(nn.Module):
         probs = torch.softmax(scaled_logits, dim=1)
         return probs
 
+###################### YOLOv1 Classification MMFv6 ######################
+class YOLOv1ClassifierMMFv6(nn.Module):
+    """
+    YOLOv1 architecture adapted for CIFAR-10 classification.
+    Follows the exact conv layers from the original YOLOv1 paper
+    (Redmon et al., 2016, arXiv:1506.02640), but replaces grid regression
+    with a simple classification head (10 classes).
+
+    Modified from YOLOv1ClassifierMMF: weight scale learnable
+    
+    Input:  [B, 3, 32, 32]  (CIFAR-10 RGB images)
+    Output: [B, 10]         (class logits)
+    """
+    def __init__(self, num_classes=10, weight_init_scale=1.0):
+        super().__init__()
+        
+        # Backbone classification: 20 convolutional layers + maxpools (exact from YOLOv1 paper)
+        self.backbone_classification = nn.Sequential(
+
+            # Conv1: 7x7x64-s-2 + MaxPool: 2x2-s-2
+            MMFConv2dv6(3, 64, kernel_size=7, stride=2, padding=3, weight_init_scale=weight_init_scale), #1
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv2: 3x3x192 + MaxPool: 2x2-s-2
+            MMFConv2dv6(64, 192, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #2
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv3–6: 1x1x128 + 3x3x256 + 1x1x256 + 3x3x512 + MaxPool: 2x2-s-2
+            MMFConv2dv6(192, 128, kernel_size=1, weight_init_scale=weight_init_scale), #3
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(128, 256, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #4
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(256, 256, kernel_size=1, weight_init_scale=weight_init_scale), #5
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #6
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv7–16: (1x1x256 + 3x3x512)x4 + 1x1x512 + 3x3x1024 + Maxpool:2x2-s-2
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #7
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #8
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #9
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #10
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #11
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #12
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #13
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #14
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 512, kernel_size=1, weight_init_scale=weight_init_scale), #15
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #16
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Conv17–20: (1x1x512 + 3x3x1024)x2
+            MMFConv2dv6(1024, 512, kernel_size=1, weight_init_scale=weight_init_scale), #17
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #18
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(1024, 512, kernel_size=1, weight_init_scale=weight_init_scale), #19
+            nn.LeakyReLU(0.1, inplace=True),
+            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #20
+            nn.LeakyReLU(0.1, inplace=True),
+        )
+        
+        # Classification head: exactly as described in YOLOv1 paper (first 20 convs + avg pool + FC)
+        self.head_classification = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),          # average-pooling layer to 1×1
+            nn.Flatten(),                           # flatten [B, 1024, 1, 1] → [B, 1024]
+            MMFLinearv6(1024, num_classes, weight_init_scale=weight_init_scale),  # single fully connected layer
+        )
+
+    def forward(self, x):
+        # x: [B, 3, 32, 32]
+        features = self.backbone_classification(x)        # → [B, 1024, 1, 1]
+        logits = self.head_classification(features)       # → [B, 10]
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)
+        return logits
+    
+    def get_probs(self, x, temperature=1.0):
+        logits = self(x)
+        scaled_logits = logits / temperature
+        probs = torch.softmax(scaled_logits, dim=1)
+        return probs
 
 
 
