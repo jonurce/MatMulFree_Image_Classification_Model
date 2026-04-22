@@ -1024,7 +1024,8 @@ class MMFLinearFunctionv7(torch.autograd.Function):
         y_tilde = (s_act * y_norm).round().clamp(-128, 127) / s_act     # [M, N]
 
         # Step 3: On chip: W_tilde <- weight_quant(W)
-        s_w     = half_levels / W.abs().mean().clamp(min=1e-8) # scalar
+        # s_w     = half_levels / W.abs().mean().clamp(min=1e-8) # scalar
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
         
         # w_tilde [K, N] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
@@ -1117,7 +1118,8 @@ class MMFConv2dFunctionv7(torch.autograd.Function):
 
 
         ### Step 3: On chip: W_tilde <- weight_quant(W)
-        s_w     = half_levels / W.abs().mean().clamp(min=1e-8) # scalar
+        # s_w     = half_levels / W.abs().mean().clamp(min=1e-8) # scalar
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
         
         # w_tilde [C_out, C_in, kH, kW] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp

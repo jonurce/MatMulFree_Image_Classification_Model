@@ -522,7 +522,7 @@ if __name__ == "__main__":
     parser.add_argument("--mmf_version",     type=int,   default=7, help="MMF version to use")
     parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
     parser.add_argument("--weight_init_scale", type=float,   default=0.5, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
-    parser.add_argument("--quantization_levels", type=int, default=9, help="Number of quantization levels for MMF (only for v7)")
+    parser.add_argument("--quantization_levels", type=int, default=5, help="Number of quantization levels for MMF (only for v7)")
 
     # Save directory
     parser.add_argument("--start_count",   type=int,   default=0,       help="Starting count for model directory naming")
