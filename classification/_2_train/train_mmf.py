@@ -528,7 +528,7 @@ if __name__ == "__main__":
     # Model parameters
     parser.add_argument("--mmf_version",     type=int,   default=6, help="MMF version to use")
     parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
-    parser.add_argument("--weight_init_scale", type=float,   default=1, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
+    parser.add_argument("--weight_init_scale", type=float,   default=0.5, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
     parser.add_argument("--quantization_levels", type=int, default=5, help="Number of quantization levels for MMF (only for v7)")
 
     # Save directory
@@ -541,7 +541,7 @@ if __name__ == "__main__":
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--epochs", type=int, default=1200)
+    parser.add_argument("--epochs", type=int, default=600)
     parser.add_argument("--lr", type=float, default=3e-3) # higher lr for mmf 3e-3
     parser.add_argument("--wd", type=float, default=0) # lower for mmf 0
     args = parser.parse_args()
