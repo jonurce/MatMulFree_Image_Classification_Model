@@ -170,6 +170,7 @@ signal.signal(signal.SIGINT, save_on_interrupt)
 
 ###################### Get Network Weights #####################
 def network_weights(model):
+    total_scale_w = 0.0
     total_zeros   = 0
     total_pos = 0
     total_neg = 0
@@ -177,8 +178,12 @@ def network_weights(model):
     total_mean = 0.0
     total_s_w = 0.0
     total_std = 0.0
+    num_scale_w = 0
     num_layers = 0
     for name, p in model.named_parameters():
+        if 'scale_w' in name:
+            total_scale_w += p.item()
+            num_scale_w += 1
         if 'weight' in name:
             s_w      = 1.0 / p.abs().mean().clamp(min=1e-8)
             w_ternary     = (s_w * p).round().clamp(-1, 1)
@@ -193,13 +198,14 @@ def network_weights(model):
             total_std += p.abs().std().item()
             num_layers += 1
     
+    avg_scale_w = total_scale_w / num_scale_w
     avg_zeros = total_zeros / total_weights
     avg_pos = total_pos / total_weights
     avg_neg = total_neg / total_weights
     avg_mean = total_mean / num_layers
     avg_s_w = total_s_w / num_layers
     avg_std = total_std / num_layers
-    return avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_w, avg_std
+    return avg_scale_w, avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_w, avg_std
 
 ##################### Main #####################
 def main(args):
@@ -393,7 +399,8 @@ def main(args):
     # Training loop
     for epoch in range(start_epoch, args.epochs):
 
-        avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_z, avg_std = network_weights(model)
+        avg_scale_w, avg_zeros, avg_pos, avg_neg, avg_mean, avg_s_z, avg_std = network_weights(model)
+        writer.add_scalar("Weights/scale_w", avg_scale_w, epoch)
         writer.add_scalar("Weights/zero", avg_zeros, epoch)
         writer.add_scalar("Weights/pos", avg_pos, epoch)
         writer.add_scalar("Weights/neg", avg_neg, epoch)
@@ -519,17 +526,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train YOLOv1-style Classifier on CIFAR-10")
 
     # Model parameters
-    parser.add_argument("--mmf_version",     type=int,   default=7, help="MMF version to use")
+    parser.add_argument("--mmf_version",     type=int,   default=6, help="MMF version to use")
     parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
-    parser.add_argument("--weight_init_scale", type=float,   default=0.5, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
+    parser.add_argument("--weight_init_scale", type=float,   default=1, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
     parser.add_argument("--quantization_levels", type=int, default=5, help="Number of quantization levels for MMF (only for v7)")
 
     # Save directory
     parser.add_argument("--start_count",   type=int,   default=0,       help="Starting count for model directory naming")
-    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv7", help="Save directory")
+    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv6", help="Save directory")
 
     # Resume directory: resume_path or None
-    resume_path = "classification/_2_train/runs_mmfv7/2/checkpoint_epoch_441.pth"
+    resume_path = "classification/_2_train/runs_mmfv6/2/checkpoint_epoch_441.pth"
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
 
     # Training parameters

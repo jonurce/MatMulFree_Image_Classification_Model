@@ -810,11 +810,11 @@ class MMFLinearFunctionv6(torch.autograd.Function):
         y_tilde = (s_act * y_norm).round().clamp(-128, 127) / s_act     # [M, N]
 
         # Step 3: On chip: W_tilde <- weight_quant(W)
-        s_w     = scale_w / W.abs().mean().clamp(min=1e-8) # scalar
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
         
         # w_tilde [K, N] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
-        w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        w_tilde = W - (W - (scale_w * s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
 
         # Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
         O = y_tilde @ w_tilde.t() + b    # [M, K] <- [M, N] @ [N, K] + [K]
@@ -828,7 +828,7 @@ class MMFLinearFunctionv6(torch.autograd.Function):
     # Step 1. Load from HBM: X, W, b, O (not used), mu, var, r, dO (HBM slow)
     @staticmethod
     def backward(ctx, dO):
-        X, W, b, mu, var, r, w_tilde, scale_w = ctx.saved_tensors
+        X, W, b, mu, var, r = ctx.saved_tensors
 
         # Step 2. On chip: dY <- dO × W^T
         dY = dO @ W # [M, N] <- [M, K] @ [K, N] 
@@ -853,7 +853,7 @@ class MMFLinearFunctionv6(torch.autograd.Function):
 
         # Step 6 (new): On chip: dscale_w <- dO × (Y × W)^T = dO × (W^T × Y^T)
         # W [K, N], W ∈ R^{N×K}
-        dscale_w = (dO @ (W @ Y_tilde.t())).sum() # [1] <- [M, K] @ ([K, N] @ [N, M])
+        dscale_w = (dO @ (W @ Y_tilde.t())).sum(dim=0) # [1] <- [M, K] @ ([K, N] @ [N, M])
 
         # Step 6: Store dX, dW, db to HBM
         # Same args as forward(ctx, X, W, b, scale_w)
@@ -907,12 +907,12 @@ class MMFConv2dFunction6(torch.autograd.Function):
 
 
         ### Step 3: On chip: W_tilde <- weight_quant(W)
-        # s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
-        s_w = scale_w / W.abs().mean().clamp(min=1e-8) # scalar
+        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        # s_w = scale_w / W.abs().mean().clamp(min=1e-8) # scalar
         
         # w_tilde [C_out, C_in, kH, kW] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
-        w_tilde = W - (W - (s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        w_tilde = W - (W - (scale_w *s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
 
         ### Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
         O = F.conv2d(y_tilde_4d, w_tilde, b, stride, padding)  # [B, C_out, H_out, W_out]
@@ -961,15 +961,19 @@ class MMFConv2dFunction6(torch.autograd.Function):
         ### Step 4: On chip: dW <- dO^T × Y_tilde
         # Reshape Y_tilde back to 4d for conv2d_weight
         Y_tilde_4d = Y_tilde.reshape(B, H_in, W_in, C_in).permute(0, 3, 1, 2)  # [B, C_in, H_in, W_in]
+        # y_tilde_4d [B, C_in, H_in, W_in], W [C_out, C_in, kH, kW], dO [B, C_out, H_out, W_out] -> dW [C_out, C_in, kH, kW]
         dW = torch.nn.grad.conv2d_weight(Y_tilde_4d, W.shape, dO.float(), stride=stride, padding=padding)  # [C_out, C_in, kH, kW]
 
         ### Step 5: On chip: db <- sum(dO)
         db = dO.sum(dim=(0, 2, 3))    # [C_out]
 
-        # Step 6 (new): On chip: dscale_w <- dO × (Y × W)^T = dO × (W^T × Y^T)
-        # W [K, N], W ∈ R^{N×K}
-        Y_times_W = F.conv2d(Y_tilde_4d, W, b, stride, padding)  # [B, C_out, H_out, W_out]
-        dscale_w = (dO @ (W @ Y_tilde.t())).sum() # [1] <- [M, K] @ ([K, N] @ [N, M])
+        # Step 6 (new): On chip: dscale_w <- dO × (Y conv2d W)^T
+        # dO [B, C_out, H_out, W_out], Y_conv2d_W [B, C_out, H_out, W_out]
+
+        # Y_tilde_4d [B, C_in, H_in, W_in], W [C_out, C_in, kH, kW], b [C_out] -> O [B, C_out, H_out, W_out]
+        Y_conv2d_W = F.conv2d(Y_tilde_4d, W, b, stride, padding)  # [B, C_out, H_out, W_out]
+
+        dscale_w = (dO * Y_conv2d_W).sum(dim=(0, 2, 3)) # scalar gradient for scale_w
 
         ### Step 6: Store dX, dW, db to HBM
         # Same args as forward(ctx, X, W, b, stride, padding)
@@ -1126,6 +1130,7 @@ class MMFConv2dFunctionv7(torch.autograd.Function):
         w_tilde = W - (W - (s_w * W).round().clamp(-half_levels, half_levels) / s_w).detach() # STE allows gradient to flow through to W
 
         ### Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
+        # y_tilde_4d [B, C_in, H_in, W_in], w_tilde [C_out, C_in, kH, kW], b [C_out]
         O = F.conv2d(y_tilde_4d, w_tilde, b, stride, padding)  # [B, C_out, H_out, W_out]
 
 
