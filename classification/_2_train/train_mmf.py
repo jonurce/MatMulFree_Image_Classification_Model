@@ -533,16 +533,16 @@ if __name__ == "__main__":
 
     # Save directory
     parser.add_argument("--start_count",   type=int,   default=0,       help="Starting count for model directory naming")
-    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs_mmfv6", help="Save directory")
+    parser.add_argument("--save_dir",     type=str,   default="classification/_2_train/runs/runs_mmfv6", help="Save directory")
 
     # Resume directory: resume_path or None
-    resume_path = "classification/_2_train/runs_mmfv6/2/checkpoint_epoch_441.pth"
+    resume_path = "classification/_2_train/runs/runs_mmfv6/2/checkpoint_epoch_441.pth"
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--epochs", type=int, default=600)
-    parser.add_argument("--lr", type=float, default=3e-3) # higher lr for mmf 3e-3
+    parser.add_argument("--epochs", type=int, default=1200)
+    parser.add_argument("--lr", type=float, default=1e-3) # higher lr for mmf 3e-3
     parser.add_argument("--wd", type=float, default=0) # lower for mmf 0
     args = parser.parse_args()
     main(args)
