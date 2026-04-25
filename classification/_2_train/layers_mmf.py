@@ -810,25 +810,27 @@ class MMFLinearFunctionv6(torch.autograd.Function):
         y_tilde = (s_act * y_norm).round().clamp(-128, 127) / s_act     # [M, N]
 
         # Step 3: On chip: W_tilde <- weight_quant(W)
-        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        # s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        # mean_w = W.abs().mean().clamp(min=1e-8) # scalar
         
         # w_tilde [K, N] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
-        w_tilde = W - (W - (scale_w * s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        # w_tilde = W - (W - (scale_w * s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        w_tilde = W - ((W - scale_w * W ).round().clamp(-1, 1) / scale_w).detach()
 
         # Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
         O = y_tilde @ w_tilde.t() + b    # [M, K] <- [M, N] @ [N, K] + [K]
 
         # Step 5: Store to HBM: O (return) + mu, var, r + X, W, b
         # ctx.save_for_backward(X, W, b, mu, var, r)
-        ctx.save_for_backward(X, W, b, mu, var, r)
+        ctx.save_for_backward(X, W, b, mu, var, r, scale_w)
 
         return O # [M, K]
 
     # Step 1. Load from HBM: X, W, b, O (not used), mu, var, r, dO (HBM slow)
     @staticmethod
     def backward(ctx, dO):
-        X, W, b, mu, var, r = ctx.saved_tensors
+        X, W, b, mu, var, r, scale_w = ctx.saved_tensors
 
         # Step 2. On chip: dY <- dO × W^T
         dY = dO @ W # [M, N] <- [M, K] @ [K, N] 
@@ -853,7 +855,10 @@ class MMFLinearFunctionv6(torch.autograd.Function):
 
         # Step 6 (new): On chip: dscale_w <- dO × (Y × W)^T = dO × (W^T × Y^T)
         # W [K, N], W ∈ R^{N×K}
-        dscale_w = (dO @ (W @ Y_tilde.t())).sum(dim=0) # [1] <- [M, K] @ ([K, N] @ [N, M])
+        # dscale_w = (dO @ (W @ Y_tilde.t())).sum(dim=0) # [1] <- [M, K] @ ([K, N] @ [N, M])
+        
+        w_tilde = (scale_w * W ).round().clamp(-1, 1) / scale_w
+        dscale_w = (dW * (-w_tilde / scale_w)).sum(dim=0)  # [1]
 
         # Step 6: Store dX, dW, db to HBM
         # Same args as forward(ctx, X, W, b, scale_w)
@@ -861,7 +866,7 @@ class MMFLinearFunctionv6(torch.autograd.Function):
 
 ################ MMF Linear Layer ################
 class MMFLinearv6(nn.Module):
-    def __init__(self, in_features, out_features, weight_init_scale=1.0):
+    def __init__(self, in_features, out_features, weight_init_scale=1.0, scale_w_init=1.0):
         super().__init__()
         
         in_features = int(in_features)
@@ -870,7 +875,7 @@ class MMFLinearv6(nn.Module):
         # X [M,N] * W.t() [N,K] = O [M,K]
         self.weight = nn.Parameter(torch.randn(out_features, in_features) * weight_init_scale) # [K, N]
         self.bias = nn.Parameter(torch.randn(out_features) * weight_init_scale) # [K]
-        self.scale_w = nn.Parameter(torch.ones(1))
+        self.scale_w = nn.Parameter(torch.ones(1) * scale_w_init)
 
 
     def forward(self, x):
@@ -907,19 +912,21 @@ class MMFConv2dFunction6(torch.autograd.Function):
 
 
         ### Step 3: On chip: W_tilde <- weight_quant(W)
-        s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
+        # s_w     = 1.0 / W.abs().mean().clamp(min=1e-8) # scalar
         # s_w = scale_w / W.abs().mean().clamp(min=1e-8) # scalar
+        # mean_w = W.abs().mean().clamp(min=1e-8) # scalar
         
         # w_tilde [C_out, C_in, kH, kW] -> ternary: {-mean(|W|), 0, +mean(|W|)} = {-1/s_w, 0, +1/s_w}
         # w_tilde = (s_w * W).round().clamp(-1, 1) / s_w # no gradient flows through round/clamp
-        w_tilde = W - (W - (scale_w *s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        # w_tilde = W - (W - (scale_w *s_w * W).round().clamp(-1, 1) / s_w).detach() # STE allows gradient to flow through to W
+        w_tilde = W - ((W - scale_w * W ).round().clamp(-1, 1) / scale_w).detach()
 
         ### Step 4: On chip: O <- Y_tilde ⊛ W_tilde + b
         O = F.conv2d(y_tilde_4d, w_tilde, b, stride, padding)  # [B, C_out, H_out, W_out]
 
 
         ### Step 5: Store to HBM: O (return) + mu, var, r + X, W, b
-        ctx.save_for_backward(X, W, b, mu, var, r)
+        ctx.save_for_backward(X, W, b, mu, var, r, scale_w)
         ctx.stride = stride
         ctx.padding = padding
 
@@ -928,7 +935,7 @@ class MMFConv2dFunction6(torch.autograd.Function):
     ### Step 1. Load from HBM: X, W, b, O (not used), mu, var, r, dO (HBM slow)
     @staticmethod
     def backward(ctx, dO):
-        X, W, b, mu, var, r = ctx.saved_tensors
+        X, W, b, mu, var, r, scale_w = ctx.saved_tensors
         stride, padding = ctx.stride, ctx.padding
 
         B, C_in, H_in, W_in = X.shape
@@ -971,9 +978,12 @@ class MMFConv2dFunction6(torch.autograd.Function):
         # dO [B, C_out, H_out, W_out], Y_conv2d_W [B, C_out, H_out, W_out]
 
         # Y_tilde_4d [B, C_in, H_in, W_in], W [C_out, C_in, kH, kW], b [C_out] -> O [B, C_out, H_out, W_out]
-        Y_conv2d_W = F.conv2d(Y_tilde_4d, W, b, stride, padding)  # [B, C_out, H_out, W_out]
+        # Y_conv2d_W = F.conv2d(Y_tilde_4d, W, b, stride, padding)  # [B, C_out, H_out, W_out]
+        # dscale_w = (dO * Y_conv2d_W).sum(dim=(0, 2, 3)) # scalar gradient for scale_w
 
-        dscale_w = (dO * Y_conv2d_W).sum(dim=(0, 2, 3)) # scalar gradient for scale_w
+        # mean_w  = W.abs().mean().clamp(min=1e-8)
+        w_tilde = (scale_w * W).round().clamp(-1, 1) / scale_w
+        dscale_w = (dW * (-w_tilde / scale_w)).sum(dim=(0, 2, 3))   # scalar
 
         ### Step 6: Store dX, dW, db to HBM
         # Same args as forward(ctx, X, W, b, stride, padding)
@@ -981,7 +991,7 @@ class MMFConv2dFunction6(torch.autograd.Function):
 
 ################ MMF Conv2d Layer ################
 class MMFConv2dv6(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, weight_init_scale=1.0):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, weight_init_scale=1.0, scale_w_init=1.0):
         super().__init__()
 
         in_channels = int(in_channels)
@@ -996,7 +1006,7 @@ class MMFConv2dv6(nn.Module):
         self.bias    = nn.Parameter(torch.randn(out_channels) * weight_init_scale)
 
         # Scalar to scale the weights before quantization
-        self.scale_w = nn.Parameter(torch.ones(1)) 
+        self.scale_w = nn.Parameter(torch.ones(1) * scale_w_init) 
 
         # Stride and padding (scalars)
         self.stride = stride

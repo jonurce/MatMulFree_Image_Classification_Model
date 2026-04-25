@@ -147,6 +147,7 @@ def save_on_interrupt():
                 'wd': args.wd,
                 'mmf_version': args.mmf_version,
                 'weight_init_scale': args.weight_init_scale,
+                'scale_w_init': args.scale_w_init,
                 'quantization_levels': args.quantization_levels
             }
         }, interrupt_path)
@@ -226,7 +227,7 @@ def main(args):
     elif (args.mmf_version == 5):
         model = YOLOv1ClassifierMMFv5(num_classes=10, weight_init_scale=args.weight_init_scale).to(device)
     elif (args.mmf_version == 6):
-        model = YOLOv1ClassifierMMFv6(num_classes=10, weight_init_scale=args.weight_init_scale).to(device)
+        model = YOLOv1ClassifierMMFv6(num_classes=10, weight_init_scale=args.weight_init_scale, scale_w_init=args.scale_w_init).to(device)
     elif (args.mmf_version == 7):
         model = YOLOv1ClassifierMMFv7(num_classes=10, weight_init_scale=args.weight_init_scale, quantization_levels=args.quantization_levels).to(device)
     else:
@@ -283,6 +284,8 @@ def main(args):
                 f.write(f"Channel Factor: {args.channel_factor}\n")
             if args.mmf_version in [5, 6, 7]:
                 f.write(f"Weight Init Scale: {args.weight_init_scale}\n")
+            if args.mmf_version == 6:
+                f.write(f"Scale W Init: {args.scale_w_init}\n")
             if args.mmf_version == 7:
                 f.write(f"Quantization Levels: {args.quantization_levels}\n")
 
@@ -474,6 +477,7 @@ def main(args):
                     'wd': args.wd,
                     'mmf_version': args.mmf_version,
                     'weight_init_scale': args.weight_init_scale,
+                    'scale_w_init': args.scale_w_init,
                     'quantization_levels': args.quantization_levels
                 }
             }, os.path.join(GLOBAL_MODEL_DIR, "best_model.pth"))
@@ -500,6 +504,7 @@ def main(args):
                 'wd': args.wd,
                 'mmf_version': args.mmf_version,
                 'weight_init_scale': args.weight_init_scale,
+                'scale_w_init': args.scale_w_init,
                 'quantization_levels': args.quantization_levels
             }
         }, os.path.join(GLOBAL_MODEL_DIR, f"checkpoint_epoch_{epoch}.pth"))
@@ -528,7 +533,8 @@ if __name__ == "__main__":
     # Model parameters
     parser.add_argument("--mmf_version",     type=int,   default=6, help="MMF version to use")
     parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
-    parser.add_argument("--weight_init_scale", type=float,   default=0.5, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
+    parser.add_argument("--weight_init_scale", type=float,   default=1.0, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
+    parser.add_argument("--scale_w_init", type=float, default=2.0, help="Scale for weight initialization (only for v6)")
     parser.add_argument("--quantization_levels", type=int, default=5, help="Number of quantization levels for MMF (only for v7)")
 
     # Save directory

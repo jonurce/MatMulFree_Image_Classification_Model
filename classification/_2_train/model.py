@@ -672,64 +672,64 @@ class YOLOv1ClassifierMMFv6(nn.Module):
     Input:  [B, 3, 32, 32]  (CIFAR-10 RGB images)
     Output: [B, 10]         (class logits)
     """
-    def __init__(self, num_classes=10, weight_init_scale=1.0):
+    def __init__(self, num_classes=10, weight_init_scale=1.0, scale_w_init=1.0):
         super().__init__()
         
         # Backbone classification: 20 convolutional layers + maxpools (exact from YOLOv1 paper)
         self.backbone_classification = nn.Sequential(
 
             # Conv1: 7x7x64-s-2 + MaxPool: 2x2-s-2
-            MMFConv2dv6(3, 64, kernel_size=7, stride=2, padding=3, weight_init_scale=weight_init_scale), #1
+            MMFConv2dv6(3, 64, kernel_size=7, stride=2, padding=3, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #1
             nn.LeakyReLU(0.1, inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
             # Conv2: 3x3x192 + MaxPool: 2x2-s-2
-            MMFConv2dv6(64, 192, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #2
+            MMFConv2dv6(64, 192, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #2
             nn.LeakyReLU(0.1, inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
             # Conv3–6: 1x1x128 + 3x3x256 + 1x1x256 + 3x3x512 + MaxPool: 2x2-s-2
-            MMFConv2dv6(192, 128, kernel_size=1, weight_init_scale=weight_init_scale), #3
+            MMFConv2dv6(192, 128, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #3
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(128, 256, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #4
+            MMFConv2dv6(128, 256, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #4
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(256, 256, kernel_size=1, weight_init_scale=weight_init_scale), #5
+            MMFConv2dv6(256, 256, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #5
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #6
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #6
             nn.LeakyReLU(0.1, inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
             # Conv7–16: (1x1x256 + 3x3x512)x4 + 1x1x512 + 3x3x1024 + Maxpool:2x2-s-2
-            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #7
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #7
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #8
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #8
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #9
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #9
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #10
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #10
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #11
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #11
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #12
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #12
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale), #13
+            MMFConv2dv6(512, 256, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #13
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #14
+            MMFConv2dv6(256, 512, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #14
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 512, kernel_size=1, weight_init_scale=weight_init_scale), #15
+            MMFConv2dv6(512, 512, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #15
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #16
+            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #16
             nn.LeakyReLU(0.1, inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
             # Conv17–20: (1x1x512 + 3x3x1024)x2
-            MMFConv2dv6(1024, 512, kernel_size=1, weight_init_scale=weight_init_scale), #17
+            MMFConv2dv6(1024, 512, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #17
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #18
+            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #18
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(1024, 512, kernel_size=1, weight_init_scale=weight_init_scale), #19
+            MMFConv2dv6(1024, 512, kernel_size=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #19
             nn.LeakyReLU(0.1, inplace=True),
-            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale), #20
+            MMFConv2dv6(512, 1024, kernel_size=3, padding=1, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init), #20
             nn.LeakyReLU(0.1, inplace=True),
         )
         
@@ -737,7 +737,7 @@ class YOLOv1ClassifierMMFv6(nn.Module):
         self.head_classification = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),          # average-pooling layer to 1×1
             nn.Flatten(),                           # flatten [B, 1024, 1, 1] → [B, 1024]
-            MMFLinearv6(1024, num_classes, weight_init_scale=weight_init_scale),  # single fully connected layer
+            MMFLinearv6(1024, num_classes, weight_init_scale=weight_init_scale, scale_w_init=scale_w_init),  # single fully connected layer
         )
 
     def forward(self, x):
