@@ -6,15 +6,35 @@ from pathlib import Path
 
 # === CONFIG ===
 
-# Experiment name
-runs_folder = "runs/runs_mmf"
+# Experiment name (CHANGE)
+runs_folder = "runs/runs_mmfv2"
 
 # Root folder containing all experiment folders
 log_dir = f"/home/jon/Workspace/Low_Power_Satellite_6DoF_Pose_Estimation/classification/_2_train/{runs_folder}"          
 
 # or "Val/epoch/accuracy", "Train/epoch/accuracy", etc
 metric_name = "Val/epoch/accuracy"
-metric_plot_name = "MMF Model Hyperparameter Tuning: Validation Accuracy"  # For plot titles and filenames
+
+# For plot titles and filenames
+metric_plot_name = "MMF Model Hyperparameter Tuning: Validation Accuracy"
+
+if runs_folder.endswith('mm'):
+    metric_plot_name = "Baseline Model Hyperparameter Tuning: Validation Accuracy"
+
+elif runs_folder.endswith('mmf'):
+    metric_plot_name = "MMF Model Hyperparameter Tuning: Validation Accuracy"
+
+elif runs_folder.endswith('mmfv2'):
+    metric_plot_name = "MMF Model Modifying Number of Channels: Validation Accuracy"
+
+elif runs_folder.endswith('mmfv5'):
+    metric_plot_name = "MMF Model Modifying Weight Initialization Scale: Validation Accuracy"
+
+elif runs_folder.endswith('mmfv7'):
+    metric_plot_name = "MMF Model Ternary, Quinary, Septenary, Nonary: Validation Accuracy"
+
+
+
 
 # Find all experiment runs
 runs = list(Path(log_dir).glob("**/*tfevents*"))  # or better structure
