@@ -7,7 +7,7 @@ from pathlib import Path
 # === CONFIG ===
 
 # Experiment name (CHANGE)
-runs_folder = "runs/runs_mmfv5"
+runs_folder = "runs/runs_mmfv7"
 
 # Root folder containing all experiment folders
 log_dir = f"/home/jon/Workspace/Low_Power_Satellite_6DoF_Pose_Estimation/classification/_2_train/{runs_folder}"          

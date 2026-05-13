@@ -12,5 +12,5 @@ Weight decay:   0
 Device:          x2 NVIDIA GeForce RTX 3090 Ti
 -------------------------
 MMF Version: 7
-Weight Init Scale: 0.2
-Quantization Levels: 5
+Weight Init Scale: 0.5
+Quantization Levels: 9
