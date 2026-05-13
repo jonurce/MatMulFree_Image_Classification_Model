@@ -533,7 +533,7 @@ if __name__ == "__main__":
     # Model parameters
     parser.add_argument("--mmf_version",     type=int,   default=6, help="MMF version to use")
     parser.add_argument("--channel_factor",     type=float,   default=1, help="Channel factor for MMF layers (only for v2)")
-    parser.add_argument("--weight_init_scale", type=float,   default=1.0, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
+    parser.add_argument("--weight_init_scale", type=float,   default=2.0, help="Weight initialization scale for MMF layers (only for v5, v6, v7)")
     parser.add_argument("--scale_w_init", type=float, default=2.0, help="Scale for weight initialization (only for v6)")
     parser.add_argument("--quantization_levels", type=int, default=5, help="Number of quantization levels for MMF (only for v7)")
 
