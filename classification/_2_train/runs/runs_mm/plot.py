@@ -7,14 +7,14 @@ from pathlib import Path
 # === CONFIG ===
 
 # Experiment name
-runs_folder = "runs/runs_mm"
+runs_folder = "runs/runs_mmf"
 
 # Root folder containing all experiment folders
 log_dir = f"/home/jon/Workspace/Low_Power_Satellite_6DoF_Pose_Estimation/classification/_2_train/{runs_folder}"          
 
 # or "Val/epoch/accuracy", "Train/epoch/accuracy", etc
 metric_name = "Val/epoch/accuracy"
-metric_plot_name = "Baseline Model: Validation Accuracy while Training"  # For plot titles and filenames
+metric_plot_name = "MMF Model Hyperparameter Tuning: Validation Accuracy"  # For plot titles and filenames
 
 # Find all experiment runs
 runs = list(Path(log_dir).glob("**/*tfevents*"))  # or better structure
@@ -29,14 +29,14 @@ df = reader.scalars
 df_metric = df[df['tag'] == metric_name].copy()
 
 # 1. Get final accuracy for each run
-# final_acc = df_metric.groupby('dir_name').last()[['step', 'value']].reset_index()
-# final_acc = final_acc.rename(columns={'value': 'final_accuracy'})
-# final_acc = final_acc.sort_values('final_accuracy', ascending=False)
+final_acc = df_metric.groupby('dir_name').last()[['step', 'value']].reset_index()
+final_acc = final_acc.rename(columns={'value': 'final_accuracy'})
+final_acc = final_acc.sort_values('final_accuracy', ascending=False)
 
 # Save results
-# save_csv = f"/home/jon/Workspace/Low_Power_Satellite_6DoF_Pose_Estimation/classification/_3_plots/{runs_folder}/{metric_plot_name}.csv"          
-# final_acc.to_csv(save_csv, index=False)
-# print(f"CSV saved successfully")
+save_csv = f"/home/jon/Workspace/Low_Power_Satellite_6DoF_Pose_Estimation/classification/_3_plots/{runs_folder}/{metric_plot_name}.csv"          
+final_acc.to_csv(save_csv, index=False)
+print(f"CSV saved successfully")
 
 # 2. Plot training curves
 plt.figure(figsize=(12, 12))
