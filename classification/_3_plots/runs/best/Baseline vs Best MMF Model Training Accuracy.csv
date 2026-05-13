@@ -1,0 +1,3 @@
+dir_name,step,final_accuracy
+Baseline,499,0.7339400053024292
+Best MMF,904,0.5378400087356567
