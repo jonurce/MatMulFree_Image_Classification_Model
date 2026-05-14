@@ -87,7 +87,7 @@ def plot_topk_comparison(baseline_true, baseline_logits, mmf_true, mmf_logits, k
                      ha='center', va='bottom', fontsize=9.5, fontweight='bold')
         
         # Formatting
-        plt.title(f'Top-{k} ValidationAccuracy per Class: Baseline vs Best MMF', fontsize=14)
+        plt.title(f'Top-{k} Validation Accuracy per Class: Baseline vs Best MMF', fontsize=14)
         plt.xlabel('Class', fontsize=12)
         plt.ylabel(f'Top-{k} Accuracy (%)', fontsize=12)
         plt.xticks(x, class_names, rotation=45, ha='right')
