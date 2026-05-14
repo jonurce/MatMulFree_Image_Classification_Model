@@ -1,4 +1,3 @@
-# train_mmf.py (adapted for CIFAR-10 classification with YOLOv1Classifier)
 
 from csv import writer
 from csv import writer
