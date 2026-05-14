@@ -73,7 +73,7 @@ def plot_per_class_comparison(baseline_true, baseline_pred, mmf_true, mmf_pred, 
         plt.text(i + width/2, v + 1, f"{v:.1f}%", 
                  ha='center', va='bottom', fontsize=9, fontweight='bold')
     
-    plt.title('Per-Class ValidationAccuracy: Baseline vs Best MMF', fontsize=14)
+    plt.title('Per-Class Validation Accuracy: Baseline vs Best MMF', fontsize=14)
     plt.xlabel('Class', fontsize=12)
     plt.ylabel('Accuracy (%)', fontsize=12)
     plt.xticks(x, class_names, rotation=45, ha='right')
