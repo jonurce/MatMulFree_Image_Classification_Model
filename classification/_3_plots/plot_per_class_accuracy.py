@@ -27,7 +27,6 @@ def evaluate_model(model, device):
     
     return true_labels, predictions
 
-
 ##################### Get Predictions #####################
 def get_predictions(model, loader, device):
     """Return all predictions and true labels"""
@@ -84,7 +83,6 @@ def plot_per_class_comparison(baseline_true, baseline_pred, mmf_true, mmf_pred, 
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Per-class comparison plot saved to: {save_path}")
     plt.show()
-
 
 
 ##################### Main #####################
