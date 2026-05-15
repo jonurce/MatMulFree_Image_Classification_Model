@@ -52,16 +52,16 @@ def plot_weight_distribution(base_model, mmf_model, save_path):
     plt.figure(figsize=(13, 8))
     
     plt.hist(base_all, bins=200, alpha=0.7, label='Baseline (Standard)', 
-             color='tab:blue', density=True, linewidth=0.5)
+             color='tab:blue', density=False, linewidth=0.5)
     plt.hist(mmf_raw, bins=200, alpha=0.7, label='MMF (Raw Float32)', 
-             color='tab:orange', density=True, linewidth=0.5)
+             color='tab:orange', density=False, linewidth=0.5)
     plt.hist(mmf_quant, bins=200, alpha=0.85, label='MMF (Quantized)', 
-             color='tab:red', density=True, linewidth=0.5)
+             color='tab:red', density=False, linewidth=0.5)
     
     plt.title('Weight Distribution: Baseline vs MMF (Raw vs Quantized)', fontsize=14)
     plt.xlabel('Weight Value', fontsize=12)
-    plt.ylabel('Density', fontsize=12)
-    plt.yscale('log')
+    plt.ylabel('Number of Weights', fontsize=12)
+    # plt.yscale('log')
     plt.xlim(-1, 1)
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=11)
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     # Model directory: model_path
     base_path = "classification/_2_train/runs/best/Baseline/best_model.pth"
     mmf_path = "classification/_2_train/runs/best/Best MMF/best_model.pth"
-    save_path = "classification/_3_plots/runs/best/weight_distribution_log.png"
+    save_path = "classification/_3_plots/runs/best/weight_distribution.png"
     parser.add_argument("--base_path", type=str, default=base_path, help="Path to baseline model")
     parser.add_argument("--mmf_path", type=str, default=mmf_path, help="Path to best MMF model")
     parser.add_argument("--save_path", type=str, default=save_path, help="Path to save confusion matrix plot")
