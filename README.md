@@ -130,13 +130,16 @@ MatMulFree_Image_Classification_Model/
 │   │   ├── dataset.py             # Defines dataset splits and augmentations
 │   │   └── test_dataset.py        # Script to test if dataset is correct (creates samples)
 │   │
-│   └── _2_train/                  # Train folder
-│       ├── runs/                  # Runs tested during the project
-│       ├── layers_mmf.py          # MMF Layer definition for different experiments
-│       ├── model.py               # Definition of used models during the project
-│       ├── test.py                # Script to test chosen model
-│       ├── train_mmf.py           # Script to train MMF model
-│       └── train.py               # Script to train baseline model
+│   ├── _2_train/                  # Train folder
+│   │   ├── runs/                  # Runs tested during the project
+│   │   ├── layers_mmf.py          # MMF Layer definition for different experiments
+│   │   ├── model.py               # Definition of used models during the project
+│   │   ├── test.py                # Script to test chosen model
+│   │   ├── train_mmf.py           # Script to train MMF model
+│   │   └── train.py               # Script to train baseline model
+│   │
+│   └── _3_plot/                   # Plot folder
+│       └── ...                    # Scripts used for plotting results
 │
 ├── requirements.txt               # Python dependencies
 └── README.md                      # Project documentation
